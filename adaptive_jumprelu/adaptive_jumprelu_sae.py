@@ -1,10 +1,11 @@
+from typing import Optional
 from sae_lens import TrainingSAE
-from sae_lens.training.training_sae import JumpReLU
+from sae_lens.training.training_sae import JumpReLU, TrainStepOutput
 from torch import nn
 import numpy as np
 import torch
 
-from adaptive_jumprelu.activations import GaussianJumpReLU
+from adaptive_jumprelu.activations import GaussianJumpReLU, GaussianStep
 
 
 class AdaptiveThresholdJumpReLU(TrainingSAE):
@@ -42,33 +43,69 @@ class AdaptiveBandwidthJumpReLU(TrainingSAE):
         hidden_pre = sae_in @ self.W_enc + self.b_enc
         threshold = self.log_threshold.exp()
 
-        hidden_pre_stdev = self.calculate_hidden_pre_stdev(sae_in)
+        bandwidth = self.get_bandwidth()
+
+        feature_acts = GaussianJumpReLU.apply(hidden_pre, threshold, bandwidth)
+        return feature_acts, hidden_pre
+
+    def training_forward_pass(
+        self,
+        sae_in: torch.Tensor,
+        current_l1_coefficient: float,
+        dead_neuron_mask: Optional[torch.Tensor] = None,
+    ) -> TrainStepOutput:
+
+        # do a forward pass to get SAE out, but we also need the
+        # hidden pre.
+        feature_acts, hidden_pre = self.encode_with_hidden_pre_fn(sae_in)
+        sae_out = self.decode(feature_acts)
+
+        # MSE LOSS
+        per_item_mse_loss = self.mse_loss_fn(sae_out, sae_in)
+        mse_loss = per_item_mse_loss.sum(dim=-1).mean()
+
+        losses: dict[str, float | torch.Tensor] = {}
+
+        assert self.cfg.architecture == "jumprelu"
+        threshold = torch.exp(self.log_threshold)
+        l0 = torch.sum(GaussianStep.apply(hidden_pre, threshold, self.get_bandwidth()), dim=-1)  # type: ignore
+        l0_loss = (current_l1_coefficient * l0).mean()
+        loss = mse_loss + l0_loss
+        losses["l0_loss"] = l0_loss
+        losses["mse_loss"] = mse_loss
+
+        return TrainStepOutput(
+            sae_in=sae_in,
+            sae_out=sae_out,
+            feature_acts=feature_acts,
+            hidden_pre=hidden_pre,
+            loss=loss,
+            losses=losses,
+        )
+
+    def get_bandwidth(self) -> float:
+        hidden_pre_stdev = self.calculate_hidden_pre_stdev()
 
         # Modified Silverman's rule of thumb for d-dimensional data
         # h = σ * (4/(d+2))^(1/(d+4)) * n^(-1/(d+4))
-        d: int = hidden_pre.shape[-1]  # number of dimensions
+        d = self.cfg.d_sae  # number of dimensions
         bandwidth = (
             hidden_pre_stdev
             * ((4 / (d + 2)) ** (1 / (d + 4)))
             * (self.n_activations_for_stdev ** (-1 / (d + 4)))
         )
-
-        feature_acts = GaussianJumpReLU.apply(hidden_pre, threshold, bandwidth)
-        return feature_acts, hidden_pre
+        return bandwidth
 
     def calculate_hidden_pre_stdev(
         self,
-        input_stdev: float | torch.Tensor,
     ) -> torch.Tensor:
         """
         Calculate the standard deviation of hidden_pre given input standard deviation.
 
-        Args:
-            input_stdev: Standard deviation of sae_in (either scalar or per-dimension)
-
         Returns:
             torch.Tensor: Standard deviation for each dimension of hidden_pre
         """
+        input_stdev = self.estimated_stdev
         if isinstance(input_stdev, float):
             input_stdev = torch.full(
                 (self.W_enc.shape[0],), input_stdev, device=self.W_enc.device
