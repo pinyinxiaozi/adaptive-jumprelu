@@ -16,10 +16,10 @@ from sae_lens.load_model import load_model
 from sae_lens.sae import SAE_CFG_PATH, SAE_WEIGHTS_PATH, SPARSITY_PATH
 from sae_lens.training.activations_store import ActivationsStore
 from sae_lens.training.geometric_median import compute_geometric_median
-from sae_lens.training.sae_trainer import SAETrainer
 from sae_lens.training.training_sae import TrainingSAE, TrainingSAEConfig
 
 from adaptive_jumprelu.activations_store import StdevEstimationActivationsStore
+from adaptive_jumprelu.sae_trainer import StdevEstimationSAETrainer
 
 
 class InterruptedException(Exception):
@@ -103,7 +103,7 @@ class SAETrainingRunner:
                 id=self.cfg.wandb_id,
             )
 
-        trainer = SAETrainer(
+        trainer = StdevEstimationSAETrainer(
             model=self.model,
             sae=self.sae,
             activation_store=self.activations_store,
@@ -148,7 +148,9 @@ class SAETrainingRunner:
                 backend=backend,
             )  # type: ignore
 
-    def run_trainer_with_interruption_handling(self, trainer: SAETrainer):
+    def run_trainer_with_interruption_handling(
+        self, trainer: StdevEstimationSAETrainer
+    ):
         try:
             # signal handlers (if preempted)
             signal.signal(signal.SIGINT, interrupt_callback)
@@ -188,7 +190,7 @@ class SAETrainingRunner:
 
     def save_checkpoint(
         self,
-        trainer: SAETrainer,
+        trainer: StdevEstimationSAETrainer,
         checkpoint_name: int | str,
         wandb_aliases: list[str] | None = None,
     ) -> str:
