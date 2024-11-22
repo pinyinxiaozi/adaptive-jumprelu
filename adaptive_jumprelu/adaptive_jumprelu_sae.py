@@ -67,12 +67,16 @@ class AdaptiveBandwidthJumpReLU(TrainingSAE):
         losses: dict[str, float | torch.Tensor] = {}
 
         assert self.cfg.architecture == "jumprelu"
+        bandwidth = self.get_bandwidth()
         threshold = torch.exp(self.log_threshold)
-        l0 = torch.sum(GaussianStep.apply(hidden_pre, threshold, self.get_bandwidth()), dim=-1)  # type: ignore
+        l0 = torch.sum(GaussianStep.apply(hidden_pre, threshold, bandwidth), dim=-1)  # type: ignore
         l0_loss = (current_l1_coefficient * l0).mean()
         loss = mse_loss + l0_loss
         losses["l0_loss"] = l0_loss
         losses["mse_loss"] = mse_loss
+
+        # not technically a loss, but useful for logging to wandb
+        losses["bandwidth"] = bandwidth
 
         return TrainStepOutput(
             sae_in=sae_in,
