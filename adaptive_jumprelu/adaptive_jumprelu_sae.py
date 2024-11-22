@@ -77,6 +77,7 @@ class AdaptiveBandwidthJumpReLU(TrainingSAE):
 
         # not technically a loss, but useful for logging to wandb
         losses["bandwidth"] = bandwidth
+        losses["mean_threshold"] = threshold.mean()
 
         return TrainStepOutput(
             sae_in=sae_in,
