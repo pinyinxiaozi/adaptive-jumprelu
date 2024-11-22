@@ -76,7 +76,7 @@ class AdaptiveBandwidthJumpReLU(TrainingSAE):
         losses["mse_loss"] = mse_loss
 
         # not technically a loss, but useful for logging to wandb
-        losses["bandwidth"] = bandwidth
+        losses["mean_bandwidth"] = bandwidth.mean()
         losses["mean_threshold"] = threshold.mean()
 
         return TrainStepOutput(
@@ -88,7 +88,7 @@ class AdaptiveBandwidthJumpReLU(TrainingSAE):
             losses=losses,
         )
 
-    def get_bandwidth(self) -> float:
+    def get_bandwidth(self) -> torch.Tensor:
         hidden_pre_stdev = self.calculate_hidden_pre_stdev()
 
         # Modified Silverman's rule of thumb for d-dimensional data
