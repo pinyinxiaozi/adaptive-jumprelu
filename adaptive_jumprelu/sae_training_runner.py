@@ -19,6 +19,7 @@ from sae_lens.training.geometric_median import compute_geometric_median
 from sae_lens.training.training_sae import TrainingSAE, TrainingSAEConfig
 
 from adaptive_jumprelu.activations_store import StdevEstimationActivationsStore
+from adaptive_jumprelu.adaptive_jumprelu_sae import AdaptiveBandwidthJumpReLU
 from adaptive_jumprelu.sae_trainer import StdevEstimationSAETrainer
 
 
@@ -80,7 +81,7 @@ class SAETrainingRunner:
                     self.cfg.from_pretrained_path, self.cfg.device
                 )
             else:
-                self.sae = TrainingSAE(
+                self.sae = AdaptiveBandwidthJumpReLU(
                     TrainingSAEConfig.from_dict(
                         self.cfg.get_training_sae_cfg_dict(),
                     )
